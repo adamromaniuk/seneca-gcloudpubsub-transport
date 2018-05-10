@@ -1,4 +1,4 @@
-var gcloud = require('@google-cloud/pubsub');
+var PubSub = require('@google-cloud/pubsub');
 var _ = require('lodash');
 var nid = require('nid');
 
@@ -24,18 +24,18 @@ module.exports = function (options) {
   seneca.add('role:seneca,cmd:close', shutdown);
 
   function make_error_handler(type, tag) {
-    return function (note, err) {
+    return (note, err) => {
       seneca.log.error(type, tag, note, err, 'CLOSED');
     }
   }
 
   function init(opts) {
-    return new Promise(function (fulfill, reject) {
+    return new Promise((resolve, reject) => {
       try {
-        pubsub = new gcloud({ projectId: opts.projectId });
+        pubsub = new PubSub({ projectId: opts.projectId });
         topicPrefix = opts.topicPrefix;
         seneca.log.info('Connected to GCloud PubSub');
-        fulfill(pubsub);
+        resolve(pubsub);
       }
       catch (ex) {
         reject(ex);
@@ -45,13 +45,13 @@ module.exports = function (options) {
 
   function createTopics(pubsub) {
     function validatePrefix(topicPrefix) {
-      return new Promise(function (fulfill, reject) {
+      return new Promise((resolve, reject) => {
         if (!_.isString(topicPrefix) || _.isEmpty(topicPrefix)
           || topicPrefix.length > 250) {
           reject('topicPrefix must be a valid string 250 characters or less!');
         }
         else {
-          fulfill();
+          resolve();
         }
       });
     }
@@ -83,7 +83,7 @@ module.exports = function (options) {
       validatePrefix(topicPrefix),
       topicCreator(topicPrefix + '.act'),
       topicCreator(topicPrefix + '.res')
-    ]).then(function (results) {
+    ]).then(results => {
       return Promise.resolve({
         act: results[1],
         res: results[2]
@@ -93,7 +93,7 @@ module.exports = function (options) {
 
   // Subscribe to a topic object
   function createSubscription(topic, kind) {
-    return new Promise(function (fulfill, reject) {
+    return new Promise((resolve, reject) => {
       var subscriber_name = topicPrefix + '.' + kind;
 
       pubsub
@@ -102,7 +102,7 @@ module.exports = function (options) {
         .then(results => {
           const subscription = results[0];
           seneca.log.info('Created subscription to "' + topic.name + '", Subscription: ' + subscriber_name);
-          fulfill(subscription);
+          resolve(subscription);
         })
         .catch(err => {
           seneca.log.error('Failed to subscribe to "' + topic.name + '"');
@@ -119,10 +119,10 @@ module.exports = function (options) {
     init(listen_options)
       .then(createTopics)
       .then(subscribeTopics)
-      .then(function () {
+      .then(() => {
         done();
       })
-      .catch(function (err) {
+      .catch(err => {
         done(err);
       });
 
@@ -134,10 +134,10 @@ module.exports = function (options) {
         .then(attachHandler);
 
       function attachHandler(subscription) {
-        return new Promise(function (fulfill, reject) {
+        return new Promise((resolve, reject) => {
           seneca.log.info('Subscribing to ' + subscription.name);
           subscription.on('message', onMessage);
-          fulfill();
+          resolve();
         });
 
         function onMessage(message) {
@@ -174,10 +174,10 @@ module.exports = function (options) {
       .then(createTopics)
       .then(subscribeTopics)
       .then(createClient)
-      .then(function (client) {
+      .then(client => {
         client_done(null, client);
       })
-      .catch(function (err) {
+      .catch(err => {
         client_done(err);
       });
 
@@ -185,7 +185,7 @@ module.exports = function (options) {
       var res_topic = topics.res; // The response topic
 
       return createSubscription(res_topic, 'res')
-        .then(function (subscription) {
+        .then(subscription => {
           return Promise.resolve({
             topics: topics,
             subscription: subscription
@@ -194,7 +194,7 @@ module.exports = function (options) {
     }
 
     function createClient(params) {
-      return new Promise(function (fulfill, reject) {
+      return new Promise((resolve, reject) => {
         var act_topic = params.topics.act;
         var subscription = params.subscription;
 
@@ -205,13 +205,7 @@ module.exports = function (options) {
         function onMessage(message) {
           var content = Buffer.from(message.data.toString('utf-8'));
           var input = tu.parseJSON(seneca, 'client-' + type, content);
-
-          console.log("### message: " + JSON.stringify(message));
-          console.log("### content: " + content);
-          console.log("### input: " + input);
-
           message.ack();
-          console.log('Ack send for message: ' + message.id);
           tu.handle_response(seneca, input, client_options);
         }
 
@@ -241,7 +235,7 @@ module.exports = function (options) {
           }
         };
 
-        fulfill(client);
+        resolve(client);
       });
     }
   }
